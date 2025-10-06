@@ -118,11 +118,11 @@ jobs:
     
     - name: Build Docker image
       run: |
-        docker-compose build
+        docker compose build
     
     - name: Test Docker containers
       run: |
-        docker-compose up -d
+        docker compose up -d
         sleep 10
-        docker-compose ps
-        docker-compose down
+        docker compose ps
+        docker compose down
