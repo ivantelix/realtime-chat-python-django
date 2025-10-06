@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test WebSocket Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 20px 0;
+            background-color: #fafafa;
+            border-radius: 4px;
+        }
+        .message {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background-color: #e3f2fd;
+        }
+        .message.sent {
+            background-color: #c8e6c9;
+            text-align: right;
+        }
+        .message.error {
+            background-color: #ffcdd2;
+            color: #c62828;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .info {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .info code {
+            background-color: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Test WebSocket Chat</h1>
+        
+        <div class="info">
+            <strong>📝 Instrucciones:</strong><br>
+            1. La conversación ID es: <code id="convId">3</code><br>
+            2. Primero inicia sesión en: <a href="http://localhost:8000/admin/" target="_blank">Django Admin</a> (admin/admin123)<br>
+            3. Luego abre este archivo en el navegador<br>
+            4. El WebSocket se conectará automáticamente<br>
+            5. Escribe un mensaje y presiona "Enviar"
+        </div>
+
+        <div id="status" class="status disconnected">
+            ⚠️ Desconectado
+        </div>
+
+        <div class="messages" id="messages">
+            <div style="text-align: center; color: #999; padding: 20px;">
+                Esperando conexión...
+            </div>
+        </div>
+
+        <div class="input-group">
+            <input 
+                type="text" 
+                id="messageInput" 
+                placeholder="Escribe tu mensaje aquí..." 
+                disabled
+            >
+            <button id="sendBtn" onclick="sendMessage()" disabled>
+                Enviar
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const conversationId = 3; // ID de la conversación creada (admin + alice)
+        let ws = null;
+
+        function addMessage(text, type = 'received') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const time = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `<strong>${time}</strong><br>${text}`;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            if (connected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = '✅ Conectado al WebSocket';
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = '⚠️ Desconectado';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+            }
+        }
+
+        function connectWebSocket() {
+            // Nota: Para producción, necesitarías pasar el token JWT
+            // Por ahora, el WebSocket requiere autenticación de sesión
+            ws = new WebSocket(`ws://localhost:8000/ws/chat/${conversationId}/`);
+
+            ws.onopen = function() {
+                console.log('WebSocket conectado');
+                updateStatus(true);
+                addMessage('Conexión establecida con el servidor', 'system');
+                document.getElementById('messages').innerHTML = '';
+            };
+
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log('Mensaje recibido:', data);
+                
+                if (data.error) {
+                    addMessage(`❌ Error: ${data.error}`, 'error');
+                } else {
+                    const sender = data.sender || 'Desconocido';
+                    const message = data.message || '';
+                    const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+                    
+                    addMessage(`<strong>${sender}</strong> (${timestamp})<br>${message}`, 'received');
+                }
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addMessage('❌ Error de conexión', 'error');
+            };
+
+            ws.onclose = function(event) {
+                console.log('WebSocket cerrado:', event);
+                updateStatus(false);
+                
+                if (event.code === 4001) {
+                    addMessage('❌ Error: No autenticado. Necesitas iniciar sesión primero.', 'error');
+                } else if (event.code === 4003) {
+                    addMessage('❌ Error: No autorizado para esta conversación.', 'error');
+                } else {
+                    addMessage('Conexión cerrada. Intentando reconectar en 3 segundos...', 'system');
+                    setTimeout(connectWebSocket, 3000);
+                }
+            };
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (message && ws && ws.readyState === WebSocket.OPEN) {
+                const data = {
+                    message: message
+                };
+                
+                ws.send(JSON.stringify(data));
+                console.log('Mensaje enviado:', data);
+                
+                // Mostrar mensaje enviado
+                addMessage(message, 'sent');
+                
+                // Limpiar input
+                input.value = '';
+            }
+        }
+
+        // Permitir enviar con Enter
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Conectar automáticamente al cargar la página
+        window.onload = function() {
+            addMessage('⚠️ IMPORTANTE: El WebSocket requiere autenticación. Si ves error 4001, necesitas iniciar sesión en Django primero.', 'error');
+            addMessage('Intentando conectar...', 'system');
+            connectWebSocket();
+        };
+    </script>
+</body>
+</html>
